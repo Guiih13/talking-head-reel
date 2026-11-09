@@ -3,3 +3,8 @@ remotion/out/
 remotion/public/talk/
 remotion/public/memes/
 .DS_Store
+.env
+*.MOV
+*.mov
+.venv/
+__pycache__/

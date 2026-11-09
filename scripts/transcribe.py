@@ -22,11 +22,14 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 
-WHISPER = "/opt/anaconda3/bin/whisper"  # openai-whisper CLI on this Mac
+_VENV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".venv", "bin", "whisper")
+# openai-whisper CLI: WHISPER_BIN, then the project .venv, then PATH
+WHISPER = os.environ.get("WHISPER_BIN") or (_VENV if os.path.exists(_VENV) else shutil.which("whisper"))
 STRONG_GREETING = re.compile(r"^(hey|hi|hello|welcome)\b", re.I)
 OUTTAKES = re.compile(r"(oh shit|oh no|let's do it again|let's do this again|let me do that again|do it again|one more time|take two|bye\.?$|see you soon|fuck|damn)", re.I)
 
@@ -36,6 +39,8 @@ def run(cmd, **kw):
 
 
 def transcribe(src, model):
+    if not WHISPER:
+        sys.exit("whisper CLI not found: pip install openai-whisper, or set WHISPER_BIN=/path/to/whisper")
     tmp = tempfile.mkdtemp(prefix="thead-")
     wav = os.path.join(tmp, "talk.wav")
     run(["ffmpeg", "-v", "error", "-y", "-i", src, "-vn", "-ac", "1", "-ar", "16000", wav])

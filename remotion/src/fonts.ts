@@ -13,8 +13,8 @@ const geistMono = new FontFace(
 
 Promise.all([geist.load(), geistMono.load()])
   .then(([g, gm]) => {
-    document.fonts.add(g);
-    document.fonts.add(gm);
+    (document.fonts as unknown as { add(f: FontFace): void }).add(g);
+    (document.fonts as unknown as { add(f: FontFace): void }).add(gm);
     continueRender(handle);
   })
   .catch((err) => {
