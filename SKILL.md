@@ -54,11 +54,24 @@ plan          -> beats: original second -> overlay
 Reel.tsx      -> Remotion composition (copy assets/reel-overlays.tsx)
 stills.sh     -> tiled portrait grids at the key seconds, fix layout
 render.sh     -> detached render (~10 min for 80 s)
-QA            -> probe, contact sheet, audio check, copy to Desktop, hand over
+QA            -> probe, contact sheet, audio check, finish.sh (finished/ + archive/), hand over
 ```
 
 The scripts do the boring steps the same way every time. The creative
 work is choosing takes and planning beats.
+
+### 0. Folders (the user's setup)
+
+The user keeps everything under `~/Documents/Reels` (override with `REELS_DIR`):
+
+- `~/Documents/Reels/inbox/` where new recordings are dropped. When the user does not
+  give a path, look here first (`ls -t ~/Documents/Reels/inbox`); if there is exactly
+  one video, use it; if several, list them and ask which one (or whether to
+  do all, one reel each, in order). If it is empty, say so.
+- `~/Documents/Reels/finished/` the delivered reels (`<name>-reel.mp4`, plus the 720p
+  preview). Deliver here instead of the Desktop.
+- `~/Documents/Reels/archive/<date>-<name>/` the original recording after delivery.
+  Re-cuts of an older reel read the original from here.
 
 ### 1. Ingest
 
@@ -245,8 +258,12 @@ Probe (duration = speech + outro, aac stream present), measure loudness
 -16 LUFS with `volume` plus `alimiter`, video stream copied), a contact
 sheet at 4 s tiles, and a `silencedetect` pass over the whole output: a
 silence longer than 0.8 s inside the speech means a pause that should have
-been cut. Copy to `~/Desktop/<name>-reel.mp4`, plus a 720p preview under
-30 MB for phones. In the handover, list the takes chosen (original
+been cut. Make a 720p preview under 30 MB for phones, then deliver with
+`scripts/finish.sh <original.MOV> out/talk-reel.mp4 <name>` (copies the reel
+to `~/Documents/Reels/finished/`, moves the original from the inbox to
+`~/Documents/Reels/archive/`; never deletes). Run it only after the QA passes, and
+say plainly where the reel and the archived original ended up. Copy the
+preview to `~/Documents/Reels/finished/<name>-preview.mp4` by hand. In the handover, list the takes chosen (original
 seconds and why), the beats in plain words, the constants the user might
 move, and the obvious follow-ups: music (the platform's own audio library
 is the safe choice; a local bed needs a licence check), a different
@@ -281,6 +298,7 @@ closing take, the repo name for the GitHub card once it exists.
 
 ## Files
 
+- `scripts/finish.sh` copy the reel to `~/Documents/Reels/finished/`, move the original from the inbox to `~/Documents/Reels/archive/`
 - `scripts/prep.sh` portrait transcode for Remotion
 - `scripts/sheet.sh` timestamped contact sheet of any video
 - `scripts/transcribe.py` whisper turbo to words json, with word fixes
