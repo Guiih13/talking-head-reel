@@ -96,7 +96,7 @@ wall). The reel is portrait, so `sheet.sh`'s 5-column tiling is fine at
 ### 2. Transcribe everything
 
 ```bash
-scripts/transcribe.py <IMG_xxxx.MOV> --out <scratch>/words_all.json \
+scripts/transcribe.py <IMG_xxxx.MOV> --out <scratch>/words_all.json --language pt \
   --fix "Cloud=Claude" --fix "cloud=Claude"
 ```
 

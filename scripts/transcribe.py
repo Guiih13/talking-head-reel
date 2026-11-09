@@ -38,14 +38,14 @@ def run(cmd, **kw):
     return subprocess.run(cmd, check=True, **kw)
 
 
-def transcribe(src, model):
+def transcribe(src, model, language="en"):
     if not WHISPER:
         sys.exit("whisper CLI not found: pip install openai-whisper, or set WHISPER_BIN=/path/to/whisper")
     tmp = tempfile.mkdtemp(prefix="thead-")
     wav = os.path.join(tmp, "talk.wav")
     run(["ffmpeg", "-v", "error", "-y", "-i", src, "-vn", "-ac", "1", "-ar", "16000", wav])
     print(f"whisper {model} on {wav} ...", file=sys.stderr)
-    run([WHISPER, wav, "--model", model, "--language", "en", "--word_timestamps", "True",
+    run([WHISPER, wav, "--model", model, "--language", language, "--word_timestamps", "True",
          "--output_format", "json", "--output_dir", tmp, "--fp16", "False"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     with open(os.path.join(tmp, "talk.json")) as f:
@@ -128,10 +128,11 @@ def main():
     ap.add_argument("--end", type=float, help="original-recording seconds where the edit ends")
     ap.add_argument("--fix", action="append", default=[], help="OLD=NEW word replacement, repeatable")
     ap.add_argument("--model", default="turbo")
+    ap.add_argument("--language", default="en", help="spoken language code, e.g. pt, en, es")
     ap.add_argument("--raw", help="reuse an existing whisper json instead of transcribing")
     a = ap.parse_args()
 
-    data = json.load(open(a.raw)) if a.raw else transcribe(a.src, a.model)
+    data = json.load(open(a.raw)) if a.raw else transcribe(a.src, a.model, a.language)
     raw_path = a.out.replace(".json", ".whisper.json")
     json.dump(data, open(raw_path, "w"))
     segs = [s for s in data["segments"] if s["text"].strip()]
