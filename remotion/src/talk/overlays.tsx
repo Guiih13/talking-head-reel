@@ -1,4 +1,5 @@
 import React from "react";
+import { STYLE, StyleAudio, gate } from "./style";
 import {
   AbsoluteFill,
   Audio,
@@ -88,30 +89,37 @@ export const Card: React.FC<{
 };
 
 // Big keyword. Used for "40 seconds", "$1 / month", "one command".
-export const Big: React.FC<{
+const BigImpl: React.FC<{
   life: number;
-  x: number;
-  y: number;
+  x?: number;
+  y?: number;
   text: string;
   sub?: string;
-  size?: number;
-  accent?: string;
+  size?: number; // ignored: STYLE.big.size is the ceiling for every card
+  accent?: string; // ignored unless STYLE.big.accentColors
   delay?: number;
-}> = ({ life, x, y, text, sub, size = 120, accent = "#fff", delay = 0 }) => (
-  <Card life={life} x={x} y={y} padding={32} delay={delay} style={{ paddingLeft: 44, paddingRight: 44 }}>
-    <div style={{ fontSize: size, fontWeight: 700, letterSpacing: -size * 0.04, lineHeight: 1, color: accent, whiteSpace: "nowrap" }}>
-      {text}
-    </div>
-    {sub ? (
-      <div style={{ fontSize: size * 0.3, color: "rgba(255,255,255,0.7)", marginTop: 10, fontWeight: 500 }}>{sub}</div>
-    ) : null}
-  </Card>
-);
+}> = ({ life, text, sub, accent = "#fff", delay = 0 }) => {
+  // one size for every card; only text too long for the card width shrinks
+  const fit = Math.floor(STYLE.big.maxWidth / (Math.max(text.length, 1) * 0.58));
+  const size = Math.min(STYLE.big.size, fit);
+  const color = STYLE.big.accentColors ? accent : "#fff";
+  return (
+    <Card life={life} x={STYLE.big.x} y={STYLE.big.y} padding={32} delay={delay} style={{ paddingLeft: 44, paddingRight: 44 }}>
+      <div style={{ fontSize: size, fontWeight: 700, letterSpacing: -size * 0.04, lineHeight: 1, color, whiteSpace: "nowrap" }}>
+        {text}
+      </div>
+      {sub ? (
+        <div style={{ fontSize: size * 0.3, color: "rgba(255,255,255,0.7)", marginTop: 10, fontWeight: 500 }}>{sub}</div>
+      ) : null}
+    </Card>
+  );
+};
+export const Big = gate("big", BigImpl);
 
 // A row of logo chips. Each chip can name its own entry frame (`at`,
 // relative to the row's Sequence) so they land on the spoken word.
 export type Chip = { src?: string; text?: string; label: string; bg?: string; pad?: number; invert?: boolean; at?: number; fg?: string };
-export const LogoRow: React.FC<{
+const LogoRowImpl: React.FC<{
   life: number;
   x: number;
   y: number;
@@ -197,7 +205,7 @@ export const LogoRow: React.FC<{
             ) : null}
             {c.bg === "transparent" ? null : (
               <Sequence from={c.at ?? i * stagger} durationInFrames={20} layout="none">
-                <Audio src={staticFile("sfx/pop.wav")} volume={0.28} />
+                <StyleAudio src={staticFile("sfx/pop.wav")} volume={0.28 * STYLE.sfx.volume} />
               </Sequence>
             )}
           </div>
@@ -462,3 +470,5 @@ export const usePush = (beats: { at: number; dur: number; zoom: number; fx?: num
 };
 
 export const Base: React.FC<{ children?: React.ReactNode }> = ({ children }) => <AbsoluteFill>{children}</AbsoluteFill>;
+
+export const LogoRow = gate("logoRow", LogoRowImpl);

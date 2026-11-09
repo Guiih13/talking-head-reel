@@ -73,6 +73,16 @@ The user keeps everything under `~/Documents/Reels` (override with `REELS_DIR`):
 - `~/Documents/Reels/archive/<date>-<name>/` the original recording after delivery.
   Re-cuts of an older reel read the original from here.
 
+### 0b. House style
+
+Read `STYLE.md` before planning any beats. It is the user's standing taste
+and wins over the overlay table in step 4, the sound effects, and the
+"What good looks like" description above. `remotion/src/talk/style.tsx`
+enforces the allowed overlays, sound and card size in code, so do not try to
+work around it; if a beat needs a forbidden overlay, leave the sentence bare
+and mention it in the handover. Change the style only when the user asks, by
+editing `style.tsx` and `STYLE.md` together.
+
 ### 1. Ingest
 
 Probe first, with per-stream (never per-frame) side data: `ffprobe -v

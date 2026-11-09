@@ -11,6 +11,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { Card, Chip, FONT, MONO, Shadow, Word, ease } from "./overlays";
+import { STYLE, StyleAudio, gate } from "./style";
 
 // Overlay grammar for the VERTICAL (1080x1920) talking-head reel. The
 // speaker is centred and fills the width, so there is no side column:
@@ -27,96 +28,159 @@ export const ACCENT = "#FFD166";
 export const RED = "#FF453A";
 
 // One sound effect at an edit frame.
-export const Sfx: React.FC<{ at: number; src: string; vol?: number }> = ({ at, src, vol = 0.4 }) => (
-  <Sequence from={at} durationInFrames={30} layout="none">
-    <Audio src={staticFile(`sfx/${src}`)} volume={vol} />
-  </Sequence>
-);
+export const Sfx: React.FC<{ at: number; src: string; vol?: number }> = ({ at, src, vol = 0.4 }) => {
+  const ok = STYLE.sfx.enabled || (STYLE.sfx.snap && src === "tap.wav");
+  if (!ok) return null;
+  return (
+    <Sequence from={at} durationInFrames={30} layout="none">
+      <Audio src={staticFile(`sfx/${src}`)} volume={vol * STYLE.sfx.volume} />
+    </Sequence>
+  );
+};
 
-// Word-timed captions for the vertical frame: three words at a time or up
-// to punctuation, wrapped inside a 900 px pill, the spoken word bright and
-// the current word in the accent colour.
-export const ReelCaptions: React.FC<{ words: Word[]; groupSize?: number; size?: number; bottom?: number }> = ({
+// House-style captions: the WHOLE phrase appears at once when its first word
+// is spoken and goes when the phrase ends. Lowercase, no end punctuation,
+// two balanced lines, cream, no background, upper third of the frame. While
+// an image card is up (`lowerWhen`, edit frames) the captions slide down so
+// the two never collide. All numbers come from STYLE.captions.
+// lowercase the word and drop end punctuation, but leave money and numbers
+// ("R$", "€", "2.300", "10x") exactly as spoken
+const stripEnd = (w: string) => {
+  const t = w.trim().replace(/[.,!?;:…]+$/, "");
+  return /[\d$€£]/.test(t) ? t : t.toLowerCase();
+};
+const endsPhrase = (w: Word) => /[.?!,;:…]$/.test(w.word.trim()) || !!(w as Word & { brk?: boolean }).brk;
+
+function buildPhrases(words: Word[]): Word[][] {
+  const { maxWords, gap } = STYLE.captions;
+  const phrases: Word[][] = [];
+  let cur: Word[] = [];
+  words.forEach((w, i) => {
+    cur.push(w);
+    const next = words[i + 1];
+    if (endsPhrase(w) || !next || next.start - w.end > gap) {
+      phrases.push(cur);
+      cur = [];
+    }
+  });
+  // cut anything longer than maxWords into balanced chunks
+  const out: Word[][] = [];
+  for (const ph of phrases) {
+    const k = Math.ceil(ph.length / maxWords);
+    let a = 0;
+    for (let c = 0; c < k; c++) {
+      const n = Math.ceil((ph.length - a) / (k - c));
+      out.push(ph.slice(a, a + n));
+      a += n;
+    }
+  }
+  return out;
+}
+
+// split a phrase into two lines of similar length (one line when short)
+function twoLines(texts: string[]): string[][] {
+  if (texts.length <= 3) return [texts];
+  let best = 1;
+  let bestDiff = Infinity;
+  for (let k = 1; k < texts.length; k++) {
+    const d = Math.abs(texts.slice(0, k).join(" ").length - texts.slice(k).join(" ").length);
+    if (d < bestDiff) { bestDiff = d; best = k; }
+  }
+  return [texts.slice(0, best), texts.slice(best)];
+}
+
+export const ReelCaptions: React.FC<{ words: Word[]; lowerWhen?: [number, number][]; bottom?: number; groupSize?: number; size?: number }> = ({
   words,
-  groupSize = 3,
-  size = 66,
-  bottom = CAP_BOTTOM,
+  lowerWhen = [],
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = frame / fps;
-  const groups: Word[][] = [];
-  let cur: Word[] = [];
-  for (const w of words) {
-    cur.push(w);
-    const punct = /[.?!,]$/.test(w.word.trim());
-    if (cur.length >= groupSize || punct) {
-      groups.push(cur);
-      cur = [];
-    }
-  }
-  if (cur.length) groups.push(cur);
-  const g = groups.find((gr) => t >= gr[0].start - 0.05 && t < gr[gr.length - 1].end + 0.3);
+  const C = STYLE.captions;
+  const phrases = React.useMemo(() => buildPhrases(words), [words]);
+  const g = phrases.find((gr) => t >= gr[0].start - 0.05 && t < gr[gr.length - 1].end + 0.3);
   if (!g) return null;
-  const gStart = g[0].start - 0.05;
-  const a = ease(t, gStart, gStart + 0.1);
-  const current = [...g].reverse().find((w) => t >= w.start - 0.02);
+  const a = ease(t, g[0].start - 0.05, g[0].start + 0.05);
+  // 0 = upper third, 1 = lowered under an image card; eased over 8 frames
+  const low = lowerWhen.reduce(
+    (m, [f0, f1]) => Math.max(m, interpolate(frame, [f0 - 2, f0 + 6, f1 - 6, f1 + 2], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })),
+    0,
+  );
+  const cy = C.centerY + (C.loweredY - C.centerY) * low;
+  const lines = twoLines(g.map((w) => stripEnd(w.word)));
   return (
     <div
       style={{
         position: "absolute",
         left: 0,
         right: 0,
-        bottom,
-        display: "flex",
-        justifyContent: "center",
+        top: cy,
+        transform: "translateY(-50%)",
+        textAlign: "center",
         fontFamily: FONT,
+        fontSize: C.size,
+        fontWeight: 800,
+        letterSpacing: -2,
+        lineHeight: 1.12,
+        color: C.color,
+        textShadow: C.shadow,
         opacity: a,
-        transform: `translateY(${(1 - a) * 14}px) scale(${0.96 + 0.04 * a})`,
+        padding: "0 90px",
       }}
     >
-      <div
-        style={{
-          background: "rgba(12,12,14,0.88)",
-          borderRadius: 22,
-          padding: "16px 32px",
-          fontSize: size,
-          fontWeight: 800,
-          letterSpacing: -0.5,
-          lineHeight: 1.15,
-          display: "flex",
-          flexWrap: "wrap",
-          justifyContent: "center",
-          gap: "4px 16px",
-          maxWidth: 900,
-          boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
-        }}
-      >
-        {g.map((w, i) => {
-          const on = t >= w.start - 0.02;
-          const isCur = w === current;
-          return (
-            <span
-              key={i}
-              style={{
-                color: isCur ? ACCENT : on ? "#fff" : "rgba(255,255,255,0.42)",
-                display: "inline-block",
-                transform: isCur ? "scale(1.06)" : "none",
-              }}
-            >
-              {w.word.trim()}
-            </span>
-          );
-        })}
-      </div>
+      {lines.map((l, i) => (
+        <div key={i}>{l.join(" ")}</div>
+      ))}
     </div>
   );
 };
 
+// A flat image card, top centre: a photo, a screenshot, or (when `quote` is
+// given and there is no `src`) a plain white quote card. No rounded corners.
+// Put the image in public/cards/ and pass src="cards/name.png".
+const ImageCardImpl: React.FC<{ life: number; src?: string; quote?: string; author?: string; w?: number; bottom?: number }> = ({
+  life,
+  src,
+  quote,
+  author,
+  w = STYLE.imageCard.w,
+  bottom = STYLE.imageCard.bottom,
+}) => {
+  const frame = useCurrentFrame();
+  const a = interpolate(frame, [0, 6, life - 6, life], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const maxH = bottom - STYLE.imageCard.minTop;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: (REEL_W - w) / 2,
+        width: w,
+        bottom: REEL_H - bottom, // anchored by its bottom edge, grows upward
+        display: "flex",
+        justifyContent: "center",
+        opacity: a,
+        transform: `translateY(${(1 - a) * -12}px)`,
+      }}
+    >
+      <div style={{ boxShadow: "0 12px 40px rgba(0,0,0,0.35)", background: "#f4f4f2", maxHeight: maxH, overflow: "hidden" }}>
+        {src ? (
+          <Img src={staticFile(src)} style={{ display: "block", maxWidth: w, maxHeight: maxH, objectFit: "contain" }} />
+        ) : (
+          <div style={{ width: w, padding: "44px 40px", boxSizing: "border-box", fontFamily: FONT, color: "#111", textAlign: "center" }}>
+            <div style={{ fontSize: 40, fontWeight: 800, lineHeight: 1.2 }}>{quote ? `\u201C${quote}\u201D` : null}</div>
+            {author ? <div style={{ fontSize: 30, marginTop: 22, fontWeight: 500 }}>{`\u2013 ${author}`}</div> : null}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+export const ImageCard = gate("imageCard", ImageCardImpl);
+
 // A list that fills in line by line as the speaker lists things, then gets
 // a rotated stamp slammed over it and every line struck through. For any
 // list the speaker then dismisses.
-export const StampList: React.FC<{
+const StampListImpl: React.FC<{
   life: number;
   lines: { text: string; at: number; icons?: { src: string; at: number; bg?: string; invert?: boolean }[] }[];
   stamp: string;
@@ -220,7 +284,7 @@ export const StampList: React.FC<{
 
 // A quote card: a small header (who said it), lines that appear as the
 // speaker quotes them, and a final line in the accent colour that lands hard.
-export const QuoteCard: React.FC<{
+const QuoteCardImpl: React.FC<{
   life: number;
   header: string;
   headerIcon?: string;
@@ -269,7 +333,7 @@ export const QuoteCard: React.FC<{
 };
 
 // Big text that gets struck through a moment later ("not about AI agents").
-export const StrikeBig: React.FC<{ life: number; text: string; strikeAt: number; x?: number; y?: number; size?: number }> = ({
+const StrikeBigImpl: React.FC<{ life: number; text: string; strikeAt: number; x?: number; y?: number; size?: number }> = ({
   life,
   text,
   strikeAt,
@@ -292,7 +356,7 @@ export const StrikeBig: React.FC<{ life: number; text: string; strikeAt: number;
 };
 
 // A mono "tree" card for a file path that appears line by line.
-export const TreeCard: React.FC<{ life: number; title: string; lines: string[]; stagger?: number; x?: number; y?: number; w?: number }> = ({
+const TreeCardImpl: React.FC<{ life: number; title: string; lines: string[]; stagger?: number; x?: number; y?: number; w?: number }> = ({
   life,
   title,
   lines,
@@ -319,7 +383,7 @@ export const TreeCard: React.FC<{ life: number; title: string; lines: string[]; 
 
 // A prompt being typed into a terminal-looking card, with a cursor and soft
 // key ticks, and an optional second line that lands later.
-export const PromptCard: React.FC<{
+const PromptCardImpl: React.FC<{
   life: number;
   prompt: string;
   cps?: number; // characters per second
@@ -364,7 +428,7 @@ export const PromptCard: React.FC<{
 
 // A blinking REC badge with a running timer, for "recording", "filming",
 // "here I am on camera".
-export const RecBadge: React.FC<{ life: number; x?: number; y?: number }> = ({ life, x = 720, y = 300 }) => {
+const RecBadgeImpl: React.FC<{ life: number; x?: number; y?: number }> = ({ life, x = 720, y = 300 }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   const enter = spring({ frame: f, fps, config: { damping: 14, stiffness: 180, mass: 0.6 } });
@@ -403,7 +467,7 @@ export const RecBadge: React.FC<{ life: number; x?: number; y?: number }> = ({ l
 };
 
 // A row of polaroid-style stills from the other takes ("a few tries").
-export const Takes: React.FC<{ life: number; stills: { src: string; label: string; at: number; tilt?: number }[]; x?: number; y?: number; w?: number }> = ({
+const TakesImpl: React.FC<{ life: number; stills: { src: string; label: string; at: number; tilt?: number }[]; x?: number; y?: number; w?: number }> = ({
   life,
   stills,
   x = CARD_X,
@@ -435,7 +499,7 @@ export const Takes: React.FC<{ life: number; stills: { src: string; label: strin
             <Img src={staticFile(s.src)} style={{ width: "100%", display: "block", borderRadius: 4 }} />
             <div style={{ textAlign: "center", fontSize: 26, fontWeight: 700, color: "#111", marginTop: 8, fontFamily: MONO }}>{s.label}</div>
             <Sequence from={s.at} durationInFrames={20} layout="none">
-              <Audio src={staticFile("sfx/pop.wav")} volume={0.3} />
+              <StyleAudio src={staticFile("sfx/pop.wav")} volume={0.3 * STYLE.sfx.volume} />
             </Sequence>
           </div>
         );
@@ -446,7 +510,7 @@ export const Takes: React.FC<{ life: number; stills: { src: string; label: strin
 
 // GitHub card for a repo that is being published: mark, title, and a
 // bouncing "link below" arrow. Set `repo` once the repo exists.
-export const GitHubCard: React.FC<{ life: number; title: string; sub: string; repo?: string; x?: number; y?: number; w?: number }> = ({ life, title, sub, repo, x = CARD_X, y = CARD_Y, w = CARD_W }) => {
+const GitHubCardImpl: React.FC<{ life: number; title: string; sub: string; repo?: string; x?: number; y?: number; w?: number }> = ({ life, title, sub, repo, x = CARD_X, y = CARD_Y, w = CARD_W }) => {
   const f = useCurrentFrame();
   const bounce = Math.sin(f / 5) * 6;
   return (
@@ -466,7 +530,7 @@ export const GitHubCard: React.FC<{ life: number; title: string; sub: string; re
 };
 
 // End card over the frozen last frame.
-export const EndCard: React.FC<{ life: number; name: string; line: string; url: string; repo?: string }> = ({ life, name, line, url, repo }) => {
+const EndCardImpl: React.FC<{ life: number; name: string; line: string; url: string; repo?: string }> = ({ life, name, line, url, repo }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   const s = spring({ frame: f - 4, fps, config: { damping: 14, stiffness: 150, mass: 0.8 } });
@@ -495,7 +559,7 @@ export const EndCard: React.FC<{ life: number; name: string; line: string; url: 
 // A big logo that appears on its name and is gone a second later.
 export const REACT_X = 750;
 export const REACT_Y = 270;
-export const BigLogo: React.FC<{ life: number; src: string; bg?: string; size?: number; pad?: number; x?: number; y?: number; invert?: boolean }> = ({
+const BigLogoImpl: React.FC<{ life: number; src: string; bg?: string; size?: number; pad?: number; x?: number; y?: number; invert?: boolean }> = ({
   life,
   src,
   bg = "#fff",
@@ -533,14 +597,14 @@ export const BigLogo: React.FC<{ life: number; src: string; bg?: string; size?: 
     >
       <Img src={staticFile(src)} style={{ width: "100%", height: "100%", objectFit: "contain", filter: invert ? "invert(1)" : undefined }} />
       <Sequence from={0} durationInFrames={20} layout="none">
-        <Audio src={staticFile("sfx/pop.wav")} volume={0.4} />
+        <StyleAudio src={staticFile("sfx/pop.wav")} volume={0.4 * STYLE.sfx.volume} />
       </Sequence>
     </div>
   );
 };
 
 // A big emoji with no background, popping in with a wobble.
-export const BigEmoji: React.FC<{ life: number; emoji: string; size?: number; x?: number; y?: number }> = ({ life, emoji, size = 300, x = REACT_X, y = REACT_Y }) => {
+const BigEmojiImpl: React.FC<{ life: number; emoji: string; size?: number; x?: number; y?: number }> = ({ life, emoji, size = 300, x = REACT_X, y = REACT_Y }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   const enter = spring({ frame: f, fps, config: { damping: 8, stiffness: 170, mass: 0.7 } });
@@ -567,7 +631,7 @@ export const BigEmoji: React.FC<{ life: number; emoji: string; size?: number; x?
     >
       {emoji}
       <Sequence from={0} durationInFrames={20} layout="none">
-        <Audio src={staticFile("sfx/pop.wav")} volume={0.4} />
+        <StyleAudio src={staticFile("sfx/pop.wav")} volume={0.4 * STYLE.sfx.volume} />
       </Sequence>
     </div>
   );
@@ -575,7 +639,7 @@ export const BigEmoji: React.FC<{ life: number; emoji: string; size?: number; x?
 
 // A meme image in the reaction slot: white border, slight tilt, pop in,
 // shrink out. Width fixed, height follows the image.
-export const Meme: React.FC<{ life: number; src: string; w?: number; x?: number; y?: number; tilt?: number; delay?: number }> = ({
+const MemeImpl: React.FC<{ life: number; src: string; w?: number; x?: number; y?: number; tilt?: number; delay?: number }> = ({
   life,
   src,
   w = 280,
@@ -607,14 +671,14 @@ export const Meme: React.FC<{ life: number; src: string; w?: number; x?: number;
     >
       <Img src={staticFile(src)} style={{ width: "100%", display: "block", borderRadius: 8 }} />
       <Sequence from={delay} durationInFrames={20} layout="none">
-        <Audio src={staticFile("sfx/pop.wav")} volume={0.35} />
+        <StyleAudio src={staticFile("sfx/pop.wav")} volume={0.35 * STYLE.sfx.volume} />
       </Sequence>
     </div>
   );
 };
 
 // Two or three big chips that bounce in and keep floating, for the close.
-export const HeroChips: React.FC<{ life: number; chips: Chip[]; size?: number; x?: number; y?: number; gap?: number }> = ({ life, chips, size = 220, x = CARD_X, y = CARD_Y, gap = 40 }) => {
+const HeroChipsImpl: React.FC<{ life: number; chips: Chip[]; size?: number; x?: number; y?: number; gap?: number }> = ({ life, chips, size = 220, x = CARD_X, y = CARD_Y, gap = 40 }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   const exit = interpolate(f, [life - 10, life], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
@@ -636,7 +700,7 @@ export const HeroChips: React.FC<{ life: number; chips: Chip[]; size?: number; x
               <div style={{ fontSize: 36, fontWeight: 700, color: "#111", background: "rgba(255,255,255,0.92)", padding: "8px 22px", borderRadius: 16, boxShadow: "0 4px 14px rgba(0,0,0,0.12)", whiteSpace: "nowrap" }}>{c.label}</div>
             ) : null}
             <Sequence from={at} durationInFrames={20} layout="none">
-              <Audio src={staticFile("sfx/pop.wav")} volume={0.42} />
+              <StyleAudio src={staticFile("sfx/pop.wav")} volume={0.42 * STYLE.sfx.volume} />
             </Sequence>
           </div>
         );
@@ -644,3 +708,18 @@ export const HeroChips: React.FC<{ life: number; chips: Chip[]; size?: number; x
     </div>
   );
 };
+
+// Style gates: each overlay renders only when STYLE.allow says so.
+export const StampList = gate("stampList", StampListImpl);
+export const QuoteCard = gate("quoteCard", QuoteCardImpl);
+export const StrikeBig = gate("strikeBig", StrikeBigImpl);
+export const TreeCard = gate("treeCard", TreeCardImpl);
+export const PromptCard = gate("promptCard", PromptCardImpl);
+export const RecBadge = gate("recBadge", RecBadgeImpl);
+export const Takes = gate("takes", TakesImpl);
+export const GitHubCard = gate("githubCard", GitHubCardImpl);
+export const EndCard = gate("endCard", EndCardImpl);
+export const BigLogo = gate("bigLogo", BigLogoImpl);
+export const BigEmoji = gate("emoji", BigEmojiImpl);
+export const Meme = gate("meme", MemeImpl);
+export const HeroChips = gate("heroChips", HeroChipsImpl);
