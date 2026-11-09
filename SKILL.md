@@ -222,6 +222,10 @@ Details and the measured geometry are in `references/layout.md`.
 
 ### 7. Check stills, then render
 
+First `../scripts/check-style.sh` (from `remotion/`): it fails on emoji in the
+timeline and warns about local components that bypass the style gates. Fix
+what it reports before spending a render.
+
 ```bash
 scripts/stills.sh TalkReel src/talk/reel-segments.json 12.7 14.8 22.6 25.9 58.3
 ```

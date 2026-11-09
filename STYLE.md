@@ -27,6 +27,13 @@ A timeline that asks for a forbidden overlay or sound renders nothing for it.
 
 ## Followed by whoever plans the reel (not enforced by code)
 
+- **No custom overlays in the timeline file.** Everything on screen comes from
+  the gated components in `overlays.tsx` / `reel-overlays.tsx`. Never write an
+  emoji character or a new card component in `Reel.tsx`: it bypasses the
+  gates. The end card is the one exception, and it must use the caption look
+  (yellow text with the style shadow, no box, no emoji, above the head).
+  `scripts/check-style.sh` fails on any emoji in the timeline; run it before
+  every render.
 - **Language:** all on-screen text in the speaker's language (Portuguese for
   Portuguese recordings). No em dashes.
 - **One thing at a time:** one card on screen at once, nothing in the first
