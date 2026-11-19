@@ -20,7 +20,16 @@ the frame with the body, never with the face.
 
 Measure a new recording the same way: one frame with a 10x10 grid
 (`ffmpeg -vf drawgrid=width=108:height=192`) is enough. If the face sits
-lower, move `CARD_Y` down with it; the captions stay where they are.
+lower, move `CARD_Y` down with it.
+
+Captions follow the head on their own: `scripts/headtop.py` writes the hair
+top to `src/talk/reel-face.json`, and `captionPlace` (reel-overlays.tsx)
+works out where it lands at the reel's strongest zoom (`originY - (originY -
+headTop) * maxZoom`). If two 70 px lines plus a 30 px gap fit between y 270
+and that line, the captions are centred in the gap; if not, they go to the
+chest at y 1380. Travel clips use `position="middle"` (y 960). Example:
+IMG_9028, head top 582, origin 806, max zoom 1.232 -> hair at 530 under the
+strongest push, captions centred at y 385.
 
 ## Instagram safe zones (Reels, 1080x1920)
 

@@ -40,9 +40,10 @@ export const Sfx: React.FC<{ at: number; src: string; vol?: number }> = ({ at, s
 
 // House-style captions: the WHOLE phrase appears at once when its first word
 // is spoken and goes when the phrase ends. Lowercase, no end punctuation,
-// two balanced lines, cream, no background, upper third of the frame. While
-// an image card is up (`lowerWhen`, edit frames) the captions slide down so
-// the two never collide. All numbers come from STYLE.captions.
+// two balanced lines, cream, no background, never on the speaker: above the
+// head, on the chest, or mid-screen for travel clips (see captionPlace). While
+// an image card is up (`lowerWhen`, edit frames) captions above the head slide
+// down so the two never collide. All numbers come from STYLE.captions.
 // lowercase the word and drop end punctuation, but leave money and numbers
 // ("R$", "€", "2.300", "10x") exactly as spoken
 const stripEnd = (w: string) => {
@@ -89,24 +90,61 @@ function twoLines(texts: string[]): string[][] {
   return [texts.slice(0, best), texts.slice(best)];
 }
 
-export const ReelCaptions: React.FC<{ words: Word[]; lowerWhen?: [number, number][]; bottom?: number; groupSize?: number; size?: number }> = ({
-  words,
-  lowerWhen = [],
-}) => {
+export type CaptionPosition = "auto" | "top" | "bottom" | "middle";
+export type CaptionPlace = { y: number; where: "top" | "bottom" | "middle" };
+
+// Where the captions sit for a whole reel. headTop is the measured top of the
+// hair at zoom 1 (reel-face.json), originY the zoom origin in px, maxZoom the
+// strongest snap x push in the timeline: the head top moves up under zoom.
+export function captionPlace(
+  position: CaptionPosition = STYLE.captions.position,
+  face?: { headTop?: number } | null,
+  originY = REEL_H * 0.42,
+  maxZoom = 1.15,
+): CaptionPlace {
+  const C = STYLE.captions;
+  if (position === "middle") return { y: C.middleY, where: "middle" };
+  if (position === "bottom") return { y: C.bottomY, where: "bottom" };
+  const head = face?.headTop;
+  if (head == null) {
+    if (position === "auto") console.warn("captions: no reel-face.json headTop, using centerY");
+    return { y: C.centerY, where: "top" };
+  }
+  // highest the hair gets: zoom lifts a head above the origin, and never lifts one below it
+  const headZ = head < originY ? originY - (originY - head) * maxZoom : head;
+  const block = 2 * C.size * 1.12; // two lines
+  const room = headZ - C.headGap - C.topMin;
+  if (position === "auto" && room < block) return { y: C.bottomY, where: "bottom" };
+  return { y: Math.round(C.topMin + Math.max(room, block) / 2), where: "top" };
+}
+
+export const ReelCaptions: React.FC<{
+  words: Word[];
+  lowerWhen?: [number, number][];
+  position?: CaptionPosition;
+  face?: { headTop?: number } | null;
+  originY?: number;
+  maxZoom?: number;
+}> = ({ words, lowerWhen = [], position, face, originY, maxZoom }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = frame / fps;
   const C = STYLE.captions;
+  const place = React.useMemo(() => captionPlace(position, face, originY, maxZoom), [position, face, originY, maxZoom]);
   const phrases = React.useMemo(() => buildPhrases(words), [words]);
   const g = phrases.find((gr) => t >= gr[0].start - 0.05 && t < gr[gr.length - 1].end + 0.3);
   if (!g) return null;
   const a = ease(t, g[0].start - 0.05, g[0].start + 0.05);
-  // 0 = upper third, 1 = lowered under an image card; eased over 8 frames
-  const low = lowerWhen.reduce(
-    (m, [f0, f1]) => Math.max(m, interpolate(frame, [f0 - 2, f0 + 6, f1 - 6, f1 + 2], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })),
-    0,
-  );
-  const cy = C.centerY + (C.loweredY - C.centerY) * low;
+  // only captions above the head collide with an image card: slide them to
+  // the chest while one is up, eased over 8 frames
+  const low =
+    place.where !== "top"
+      ? 0
+      : lowerWhen.reduce(
+          (m, [f0, f1]) => Math.max(m, interpolate(frame, [f0 - 2, f0 + 6, f1 - 6, f1 + 2], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })),
+          0,
+        );
+  const cy = place.y + (C.bottomY - place.y) * low;
   const lines = twoLines(g.map((w) => stripEnd(w.word)));
   return (
     <div
@@ -529,27 +567,50 @@ const GitHubCardImpl: React.FC<{ life: number; title: string; sub: string; repo?
   );
 };
 
-// End card over the frozen last frame.
-const EndCardImpl: React.FC<{ life: number; name: string; line: string; url: string; repo?: string }> = ({ life, name, line, url, repo }) => {
+// House-style end card over the frozen last frame: caption colour and shadow,
+// no box, no emoji. A small `lead` line (optional) over a big `punch`. It sits
+// where the captions sit (captionPlace: above the head, on the chest, or
+// mid-screen), so pass the same face / originY / maxZoom as ReelCaptions.
+// The text is the only per-video input; see "End card" in STYLE.md.
+const EndCardImpl: React.FC<{
+  punch: string;
+  lead?: string;
+  position?: CaptionPosition;
+  face?: { headTop?: number } | null;
+  originY?: number;
+  maxZoom?: number;
+}> = ({ punch, lead, position, face, originY, maxZoom }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const s = spring({ frame: f - 4, fps, config: { damping: 14, stiffness: 150, mass: 0.8 } });
-  const dim = interpolate(f, [0, 12], [0, 0.55], { extrapolateRight: "clamp" });
-  void life;
+  const C = STYLE.captions;
+  const E = STYLE.endCard;
+  const place = captionPlace(position, face, originY, maxZoom);
+  const s = spring({ frame: f - 4, fps, config: { damping: 18, stiffness: 140, mass: 0.8 } });
+  const dim = interpolate(f, [0, 12], [0, E.dim], { extrapolateRight: "clamp" });
+  // long punches shrink to fit the safe width instead of wrapping
+  const punchSize = Math.min(E.punchSize, Math.floor(E.maxWidth / (Math.max(punch.length, 1) * 0.52)));
   return (
     <>
       <div style={{ position: "absolute", inset: 0, background: `rgba(0,0,0,${dim})` }} />
-      <div style={{ position: "absolute", left: 0, right: 0, top: 640, display: "flex", flexDirection: "column", alignItems: "center", gap: 26, fontFamily: FONT, opacity: s, transform: `translateY(${(1 - s) * 30}px)` }}>
-        <div style={{ background: "rgba(255,255,255,0.97)", color: "#111", borderRadius: 30, padding: "40px 50px", boxShadow: Shadow, textAlign: "center", width: 900, boxSizing: "border-box" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20 }}>
-            <Img src={staticFile("icons/github.svg")} style={{ width: 70, height: 70 }} />
-            <div style={{ fontFamily: MONO, fontSize: 60, fontWeight: 700, letterSpacing: -2 }}>{name}</div>
-          </div>
-          <div style={{ fontSize: 34, color: "#555", marginTop: 16, fontWeight: 500 }}>{line}</div>
-          {repo ? <div style={{ fontFamily: MONO, fontSize: 28, color: "#111", marginTop: 18, fontWeight: 600, background: "#f1f1f3", borderRadius: 12, padding: "10px 16px", display: "inline-block", whiteSpace: "nowrap" }}>{repo}</div> : null}
-          <div style={{ fontSize: 40, color: "#111", marginTop: 22, fontWeight: 800 }}>↓ link below</div>
-        </div>
-        <div style={{ color: "rgba(255,255,255,0.8)", fontSize: 30, fontWeight: 600, letterSpacing: 1 }}>{url}</div>
+      <div
+        style={{
+          position: "absolute",
+          left: 60,
+          right: 60,
+          top: Math.max(place.y, C.topMin + 100),
+          transform: `translateY(calc(-50% + ${(1 - s) * 20}px))`,
+          textAlign: "center",
+          fontFamily: FONT,
+          opacity: s,
+          textShadow: C.shadow,
+          letterSpacing: -2,
+          color: C.color,
+          fontWeight: 800,
+          lineHeight: 1.08,
+        }}
+      >
+        {lead ? <div style={{ fontSize: E.leadSize }}>{lead.toLowerCase()}</div> : null}
+        <div style={{ fontSize: punchSize, marginTop: lead ? 14 : 0, whiteSpace: "nowrap" }}>{punch.toLowerCase()}</div>
       </div>
     </>
   );

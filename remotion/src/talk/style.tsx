@@ -32,9 +32,30 @@ export const STYLE = {
     heroChips: false,
   },
 
-  // Captions: whole phrase at once, lowercase, cream, no background, upper
-  // third. They slide to loweredY while an image card is on screen.
-  captions: { color: "#F2E58A", size: 70, shadow: "0 2px 4px rgba(0,0,0,0.55), 0 4px 24px rgba(0,0,0,0.65)", centerY: 580, loweredY: 1380, maxWords: 8, gap: 0.35 },
+  // Captions: whole phrase at once, lowercase, cream, no background. Never on
+  // the speaker. `position` (overridable per reel on <ReelCaptions>):
+  //   "auto"   talking head: above the head when two lines fit between the IG
+  //            title bar (topMin) and the head top at the strongest zoom, else
+  //            on the chest (bottomY). Needs reel-face.json (scripts/headtop.py).
+  //   "top" / "bottom"  forced; "top" still centres in the space above the head.
+  //   "middle" travel / b-roll clips (walking with the phrase): centre of the screen.
+  // In the top position they slide to bottomY while an image card is up.
+  captions: {
+    color: "#F2E58A",
+    size: 70,
+    shadow: "0 2px 4px rgba(0,0,0,0.55), 0 4px 24px rgba(0,0,0,0.65)",
+    position: "auto" as "auto" | "top" | "bottom" | "middle",
+    topMin: 270, // below the IG title bar
+    headGap: 30, // air between the last line and the hair
+    centerY: 440, // "top" when no head measurement exists
+    bottomY: 1380, // chest, above the IG caption strip (ends ~1470)
+    middleY: 960,
+    maxWords: 8,
+    gap: 0.35,
+  },
+  // End card: lead line over a big punch, in the caption look, 3 s on the frozen last frame.
+  endCard: { leadSize: 62, punchSize: 112, maxWidth: 900, dim: 0.5, seconds: 3 },
+
   // bottom edge of the card sits at y `bottom` (a gap above the head); the card grows upward
   // and never goes higher than `minTop` (the Instagram title bar covers the top ~250 px)
   imageCard: { w: 560, bottom: 620, minTop: 270 },

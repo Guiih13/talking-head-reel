@@ -219,7 +219,7 @@ export const TalkReel: React.FC = () => {
 
       {/* outro on the frozen last frame */}
       <Sequence from={SPEECH_FRAMES} durationInFrames={OUTRO_FRAMES} layout="none" name="end card">
-        <EndCard life={OUTRO_FRAMES} name="your-repo" line="one line about what it is" repo={REPO} url="yoursite.com" />
+        <EndCard lead="one short line in their words" punch="the main idea" />
       </Sequence>
 
       <ReelCaptions words={words} />

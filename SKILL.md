@@ -96,6 +96,18 @@ stream entries prints one line per frame forever.
 scripts/prep.sh <IMG_xxxx.MOV> public/talk
 ```
 
+Then measure the head for the captions (they go above it or below it, never
+on it):
+
+```bash
+../.venv/bin/python -I ../scripts/headtop.py public/talk/ig1080.mp4 src/talk/reel-face.json
+```
+
+and pass it to the captions with the reel's zoom: `<ReelCaptions words={words}
+face={face} originY={ORIGIN_Y} maxZoom={MAX_ZOOM} />`. For travel or b-roll
+clips (walking with the phrase, not talking to camera) pass
+`position="middle"` instead and skip the measurement.
+
 While it runs, make a contact sheet (`scripts/sheet.sh <mov> 10`) and look
 at it for the geometry: where the face sits (the zoom origin), where the
 chin is (the top of the card band), where the hands reach (they will be
@@ -174,7 +186,7 @@ made the viewer imagine, then show that thing, on the word:
 | a punchline, a reaction, a wait | `Meme` in the reaction slot: a template from `https://api.imgflip.com/get_memes` (top 100, names and image URLs), downloaded into `public/memes/` (gitignored, never redistributed), 240 to 300 px wide, 1.3 to 2 s, five or six per reel at most |
 | "link below", a repo being published | `GitHubCard`; put the real repo name in `repo` once it exists |
 | the close, a company and its badge | `HeroChips`: two 220 px chips that bounce in and keep floating |
-| the close | `EndCard` over the frozen last frame, held 3 to 3.5 s, with the repo or URL as text |
+| the close | `EndCard` over the frozen last frame, 3 s: `lead` + `punch` picked by the rule in STYLE.md ("End card text"), not offered as options |
 
 If a sentence answers none of these, leave it alone; silence in the band
 is what makes the next overlay land. Every beat time is an
@@ -314,6 +326,7 @@ closing take, the repo name for the GitHub card once it exists.
 
 - `scripts/finish.sh` copy the reel to `~/Documents/Reels/finished/`, move the original from the inbox to `~/Documents/Reels/archive/`
 - `scripts/prep.sh` portrait transcode for Remotion
+- `scripts/headtop.py` measure the top of the speaker's head (macOS Vision) so the captions clear it
 - `scripts/sheet.sh` timestamped contact sheet of any video
 - `scripts/transcribe.py` whisper turbo to words json, with word fixes
 - `scripts/cut.py` takes + whisper json to captions and the edit timeline
